@@ -4,9 +4,9 @@ A React component for drawing network diagrams.
 
 ## Documentation
 
-- **📖 [ISOFLOW_ENCYCLOPEDIA.md](../ISOFLOW_ENCYCLOPEDIA.md)** - Comprehensive guide to the codebase structure and navigation
-- **📝 [ISOFLOW_TODO.md](../ISOFLOW_TODO.md)** - Current issues and roadmap with codebase mappings
-- **🤝 [CONTRIBUTORS.md](../CONTRIBUTORS.md)** - How to contribute to the project
+- **📖 [ISOFLOW_ENCYCLOPEDIA.md](https://github.com/stan-smith/isoflow/blob/main/ISOFLOW_ENCYCLOPEDIA.md)** - Comprehensive guide to the codebase structure and navigation
+- **📝 [ISOFLOW_TODO.md](https://github.com/stan-smith/isoflow/blob/main/ISOFLOW_TODO.md)** - Current issues and roadmap with codebase mappings
+- **🤝 [CONTRIBUTORS.md](https://github.com/stan-smith/isoflow/blob/main/CONTRIBUTORS.md)** - How to contribute to the project
 
 ## Quick Links
 
