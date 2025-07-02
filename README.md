@@ -1,6 +1,7 @@
-# Isoflow
+# Isoflow - Modified for FossFLOW
 
 A React component for drawing network diagrams.
+Please direct your TODOs to this repository.
 
 ## Documentation
 
