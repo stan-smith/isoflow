@@ -1,84 +1,129 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useModelStore } from 'src/stores/modelStore';
 import { useSceneStore } from 'src/stores/sceneStore';
 
 export const useHistory = () => {
-    // Call all hooks unconditionally at the top level with safe fallbacks
-    const modelActions = useModelStore((state) => {
-        return state?.actions;
-    });
-    const sceneActions = useSceneStore((state) => {
-        return state?.actions;
-    });
-    const modelCanUndo = useModelStore((state) => {
-        return state?.actions?.canUndo?.() ?? false;
-    });
-    const sceneCanUndo = useSceneStore((state) => {
-        return state?.actions?.canUndo?.() ?? false;
-    });
-    const modelCanRedo = useModelStore((state) => {
-        return state?.actions?.canRedo?.() ?? false;
-    });
-    const sceneCanRedo = useSceneStore((state) => {
-        return state?.actions?.canRedo?.() ?? false;
-    });
+  // Track if we're in a transaction to prevent nested history saves
+  const transactionInProgress = useRef(false);
 
-    // Derived values
-    const canUndo = modelCanUndo || sceneCanUndo;
-    const canRedo = modelCanRedo || sceneCanRedo;
+  // Get store actions
+  const modelActions = useModelStore((state) => {
+    return state?.actions;
+  });
+  const sceneActions = useSceneStore((state) => {
+    return state?.actions;
+  });
 
-    const undo = useCallback(() => {
-        if (!modelActions || !sceneActions) return false;
+  // Get history state
+  const modelCanUndo = useModelStore((state) => {
+    return state?.actions?.canUndo?.() ?? false;
+  });
+  const sceneCanUndo = useSceneStore((state) => {
+    return state?.actions?.canUndo?.() ?? false;
+  });
+  const modelCanRedo = useModelStore((state) => {
+    return state?.actions?.canRedo?.() ?? false;
+  });
+  const sceneCanRedo = useSceneStore((state) => {
+    return state?.actions?.canRedo?.() ?? false;
+  });
 
-        let undoPerformed = false;
+  // Derived values
+  const canUndo = modelCanUndo || sceneCanUndo;
+  const canRedo = modelCanRedo || sceneCanRedo;
 
-        // Try to undo model first, then scene
-        if (modelActions.canUndo()) {
-            undoPerformed = modelActions.undo() || undoPerformed;
-        }
-        if (sceneActions.canUndo()) {
-            undoPerformed = sceneActions.undo() || undoPerformed;
-        }
+  // Transaction wrapper - groups multiple operations into single history entry
+  const transaction = useCallback(
+    (operations: () => void) => {
+      if (!modelActions || !sceneActions) return;
 
-        return undoPerformed;
-    }, [modelActions, sceneActions]);
+      // Prevent nested transactions
+      if (transactionInProgress.current) {
+        operations();
+        return;
+      }
 
-    const redo = useCallback(() => {
-        if (!modelActions || !sceneActions) return false;
+      // Save current state before transaction
+      modelActions.saveToHistory();
+      sceneActions.saveToHistory();
 
-        let redoPerformed = false;
+      // Mark transaction as in progress
+      transactionInProgress.current = true;
 
-        // Try to redo model first, then scene
-        if (modelActions.canRedo()) {
-            redoPerformed = modelActions.redo() || redoPerformed;
-        }
-        if (sceneActions.canRedo()) {
-            redoPerformed = sceneActions.redo() || redoPerformed;
-        }
+      try {
+        // Execute all operations without saving intermediate history
+        operations();
+      } finally {
+        // Always reset transaction state
+        transactionInProgress.current = false;
+      }
 
-        return redoPerformed;
-    }, [modelActions, sceneActions]);
+      // Note: We don't save after transaction - the final state is already current
+    },
+    [modelActions, sceneActions]
+  );
 
-    const saveToHistory = useCallback(() => {
-        if (!modelActions || !sceneActions) return;
+  const undo = useCallback(() => {
+    if (!modelActions || !sceneActions) return false;
 
-        modelActions.saveToHistory();
-        sceneActions.saveToHistory();
-    }, [modelActions, sceneActions]);
+    let undoPerformed = false;
 
-    const clearHistory = useCallback(() => {
-        if (!modelActions || !sceneActions) return;
+    // Try to undo model first, then scene
+    if (modelActions.canUndo()) {
+      undoPerformed = modelActions.undo() || undoPerformed;
+    }
+    if (sceneActions.canUndo()) {
+      undoPerformed = sceneActions.undo() || undoPerformed;
+    }
 
-        modelActions.clearHistory();
-        sceneActions.clearHistory();
-    }, [modelActions, sceneActions]);
+    return undoPerformed;
+  }, [modelActions, sceneActions]);
 
-    return {
-        undo,
-        redo,
-        canUndo,
-        canRedo,
-        saveToHistory,
-        clearHistory
-    };
+  const redo = useCallback(() => {
+    if (!modelActions || !sceneActions) return false;
+
+    let redoPerformed = false;
+
+    // Try to redo model first, then scene
+    if (modelActions.canRedo()) {
+      redoPerformed = modelActions.redo() || redoPerformed;
+    }
+    if (sceneActions.canRedo()) {
+      redoPerformed = sceneActions.redo() || redoPerformed;
+    }
+
+    return redoPerformed;
+  }, [modelActions, sceneActions]);
+
+  const saveToHistory = useCallback(() => {
+    // Don't save during transactions
+    if (transactionInProgress.current) {
+      return;
+    }
+
+    if (!modelActions || !sceneActions) return;
+
+    modelActions.saveToHistory();
+    sceneActions.saveToHistory();
+  }, [modelActions, sceneActions]);
+
+  const clearHistory = useCallback(() => {
+    if (!modelActions || !sceneActions) return;
+
+    modelActions.clearHistory();
+    sceneActions.clearHistory();
+  }, [modelActions, sceneActions]);
+
+  return {
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    saveToHistory,
+    clearHistory,
+    transaction,
+    isInTransaction: () => {
+      return transactionInProgress.current;
+    }
+  };
 };

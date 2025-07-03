@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import {
   ModelItem,
   ViewItem,
@@ -30,6 +30,7 @@ export const useScene = () => {
   const currentViewId = useUiStateStore((state) => {
     return state.view;
   });
+  const transactionInProgress = useRef(false);
 
   const currentView = useMemo(() => {
     // Handle case where view doesn't exist yet or stores aren't initialized
@@ -131,19 +132,27 @@ export const useScene = () => {
     [model?.actions, scene?.actions]
   );
 
-  // Helper to save current state to history before making changes
   const saveToHistoryBeforeChange = useCallback(() => {
+    // Prevent multiple saves during grouped operations
+    if (transactionInProgress.current) {
+      return;
+    }
+
     model?.actions?.saveToHistory?.();
     scene?.actions?.saveToHistory?.();
   }, [model?.actions, scene?.actions]);
 
   const createModelItem = useCallback(
     (newModelItem: ModelItem) => {
-      if (!model?.actions || !scene?.actions) return;
+      if (!model?.actions || !scene?.actions) return getState();
 
-      saveToHistoryBeforeChange();
+      if (!transactionInProgress.current) {
+        saveToHistoryBeforeChange();
+      }
+
       const newState = reducers.createModelItem(newModelItem, getState());
       setState(newState);
+      return newState; // Return the new state for chaining
     },
     [
       getState,
@@ -189,16 +198,23 @@ export const useScene = () => {
   );
 
   const createViewItem = useCallback(
-    (newViewItem: ViewItem) => {
+    (newViewItem: ViewItem, currentState?: State) => {
       if (!model?.actions || !scene?.actions || !currentViewId) return;
 
-      saveToHistoryBeforeChange();
+      if (!transactionInProgress.current) {
+        saveToHistoryBeforeChange();
+      }
+
+      // Use provided state or get current state
+      const stateToUse = currentState || getState();
+
       const newState = reducers.view({
         action: 'CREATE_VIEWITEM',
         payload: newViewItem,
-        ctx: { viewId: currentViewId, state: getState() }
+        ctx: { viewId: currentViewId, state: stateToUse }
       });
       setState(newState);
+      return newState;
     },
     [
       getState,
@@ -474,6 +490,65 @@ export const useScene = () => {
     ]
   );
 
+  const transaction = useCallback(
+    (operations: () => void) => {
+      if (!model?.actions || !scene?.actions) return;
+
+      // Prevent nested transactions
+      if (transactionInProgress.current) {
+        operations();
+        return;
+      }
+
+      // Save state before transaction
+      saveToHistoryBeforeChange();
+
+      // Mark transaction as in progress
+      transactionInProgress.current = true;
+
+      try {
+        // Execute all operations without saving intermediate history
+        operations();
+      } finally {
+        // Always reset transaction state
+        transactionInProgress.current = false;
+      }
+    },
+    [saveToHistoryBeforeChange, model?.actions, scene?.actions]
+  );
+
+  const placeIcon = useCallback(
+    (params: { modelItem: ModelItem; viewItem: ViewItem }) => {
+      if (!model?.actions || !scene?.actions) return;
+
+      // Save history before the transaction
+      saveToHistoryBeforeChange();
+
+      // Mark transaction as in progress
+      transactionInProgress.current = true;
+
+      try {
+        // Create model item first and get the updated state
+        const stateAfterModelItem = createModelItem(params.modelItem);
+
+        // Create view item using the updated state
+        if (stateAfterModelItem) {
+          createViewItem(params.viewItem, stateAfterModelItem);
+        }
+      } finally {
+        // Always reset transaction state
+        transactionInProgress.current = false;
+      }
+    },
+    [
+      createModelItem,
+      createViewItem,
+      saveToHistoryBeforeChange,
+      model?.actions,
+      scene?.actions
+    ]
+  );
+
   return {
     items,
     connectors,
@@ -496,6 +571,8 @@ export const useScene = () => {
     createRectangle,
     updateRectangle,
     deleteRectangle,
-    changeLayerOrder
+    changeLayerOrder,
+    transaction,
+    placeIcon
   };
 };
